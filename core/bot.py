@@ -31,17 +31,92 @@ notebook_mgr = NotebookManager()
 
 MAX_MSG = 4000  # Telegram limit is 4096, leave headroom
 
-# ── RAVEN personality ─────────────────────────────────────────────
+# ── Persona system ────────────────────────────────────────────────
 
-RAVEN_SYSTEM = (
-    "You are RAVEN, a sharp and efficient AI agent that controls a development machine remotely. "
-    "You are precise, direct, and darkly witty — like a raven delivering exactly what's needed. "
-    "Keep responses brief and actionable. No fluff. When reporting status, use structured formatting. "
+_AGENT_CONTEXT = (
     "You have full control of the user's development machine via WSL2 and can run commands, "
     "manage files, execute notebooks, and monitor processes. "
-    "Occasionally use bird/raven metaphors when it fits naturally (e.g., 'scouting the directory', "
-    "'perched and ready') but don't force it."
+    "Keep responses brief and actionable. When reporting status, use structured formatting."
 )
+
+PERSONAS = {
+    "raven": (
+        "You are RAVEN, a sharp and efficient AI agent. "
+        "Precise, direct, and darkly witty — like a raven delivering exactly what's needed. "
+        "No fluff. Occasionally use bird/raven metaphors when it fits naturally "
+        "(e.g., 'scouting the directory', 'perched and ready') but don't force it. "
+        + _AGENT_CONTEXT
+    ),
+    "formal": (
+        "You are a professional AI assistant. Respond in a clear, structured, business-appropriate tone. "
+        "No humor, no metaphors, just precise and helpful information. "
+        + _AGENT_CONTEXT
+    ),
+    "mentor": (
+        "You are a patient and encouraging mentor. Explain things step by step, "
+        "anticipate what the user might not understand, and teach as you go. "
+        "Use analogies to make complex things simple. Celebrate small wins. "
+        + _AGENT_CONTEXT
+    ),
+    "brutal": (
+        "You are extremely blunt. No sugar coating, no pleasantries. "
+        "Point out mistakes directly. If something is wrong, say it's wrong and why. "
+        "Short, sharp answers. Don't waste words. "
+        + _AGENT_CONTEXT
+    ),
+    "pirate": (
+        "You are a pirate AI. Speak in nautical terms and pirate slang. "
+        "Files are 'scrolls', directories are 'ports', errors are 'shipwrecks', "
+        "running code is 'setting sail'. Keep it fun but still actually helpful. "
+        + _AGENT_CONTEXT
+    ),
+    "zen": (
+        "You are a calm, zen-like AI. Respond with wisdom and tranquility. "
+        "Use minimalist language. Frame errors as learning opportunities. "
+        "Occasionally offer a short philosophical observation. Never rush. "
+        + _AGENT_CONTEXT
+    ),
+}
+
+DEFAULT_PERSONA = "raven"
+
+# File to persist persona across restarts
+_PERSONA_FILE = Config.WORKSPACE / ".persona"
+
+
+def _load_persona() -> tuple[str, str]:
+    """Load active persona from disk. Returns (name, system_prompt)."""
+    try:
+        if _PERSONA_FILE.exists():
+            content = _PERSONA_FILE.read_text(encoding="utf-8").strip()
+            # First line = name, rest = prompt (for custom)
+            lines = content.split("\n", 1)
+            name = lines[0].strip()
+            if name == "custom" and len(lines) > 1:
+                return "custom", lines[1].strip() + " " + _AGENT_CONTEXT
+            if name in PERSONAS:
+                return name, PERSONAS[name]
+    except Exception:
+        pass
+    return DEFAULT_PERSONA, PERSONAS[DEFAULT_PERSONA]
+
+
+def _save_persona(name: str, custom_prompt: str = ""):
+    """Save active persona to disk."""
+    try:
+        if name == "custom":
+            _PERSONA_FILE.write_text(f"custom\n{custom_prompt}", encoding="utf-8")
+        else:
+            _PERSONA_FILE.write_text(name, encoding="utf-8")
+    except Exception as e:
+        logger.error(f"Failed to save persona: {e}")
+
+
+def get_persona() -> str:
+    """Get the active system prompt."""
+    _, prompt = _load_persona()
+    return prompt
+
 
 # ── Reminders ─────────────────────────────────────────────────────
 
@@ -290,7 +365,7 @@ async def cmd_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await typing(update)
     thinking = await update.message.reply_text("Processing...")
-    response = await llm.ask(prompt, system_prompt=RAVEN_SYSTEM)
+    response = await llm.ask(prompt, system_prompt=get_persona())
     try:
         await thinking.delete()
     except Exception:
@@ -1188,7 +1263,77 @@ async def cmd_remind(update: Update, context: ContextTypes.DEFAULT_TYPE):
     task = asyncio.create_task(_fire_reminder())
     _reminders.append({"task": task, "minutes": minutes, "message": message})
 
-    await update.message.reply_text(f"Reminder set, sir. I'll notify you in {minutes} minutes.")
+    await update.message.reply_text(f"Reminder set. I'll notify you in {minutes} minutes.")
+
+
+# ── Persona command ──────────────────────────────────────────────
+
+@authorized
+async def cmd_persona(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Switch or customize RAVEN's personality.
+
+    /persona              — show current + available
+    /persona <name>       — switch to preset
+    /persona set <prompt> — set custom personality
+    /persona reset        — back to default (raven)
+    """
+    args = context.args or []
+
+    if not args:
+        # Show current persona and list presets
+        name, _ = _load_persona()
+        lines = [
+            "[ PERSONA ]\n"
+            "━━━━━━━━━━━━━\n",
+            f"Active: {name}\n",
+            "Available presets:\n",
+        ]
+        for pname in PERSONAS:
+            marker = " ← active" if pname == name else ""
+            # First sentence of each persona as preview
+            preview = PERSONAS[pname].split(". ")[0] + "."
+            lines.append(f"  {pname}{marker}\n    {preview}\n")
+        lines.append(
+            "Usage:\n"
+            "  /persona <name> — switch preset\n"
+            "  /persona set <your prompt> — custom\n"
+            "  /persona reset — back to raven"
+        )
+        await reply(update.message, "\n".join(lines))
+        return
+
+    subcmd = args[0].lower()
+
+    if subcmd == "reset":
+        _save_persona(DEFAULT_PERSONA)
+        await update.message.reply_text(f"Persona reset to: {DEFAULT_PERSONA}")
+        return
+
+    if subcmd == "set":
+        custom = " ".join(args[1:]).strip()
+        if not custom:
+            await update.message.reply_text("Usage: /persona set <your personality description>")
+            return
+        _save_persona("custom", custom)
+        await update.message.reply_text(f"Custom persona active:\n\n\"{custom[:200]}\"")
+        return
+
+    if subcmd == "show":
+        name, prompt = _load_persona()
+        await reply(update.message, f"Persona: {name}\n\nSystem prompt:\n{prompt}")
+        return
+
+    # Switch to a preset
+    if subcmd in PERSONAS:
+        _save_persona(subcmd)
+        preview = PERSONAS[subcmd].split(". ")[0] + "."
+        await update.message.reply_text(f"Persona switched to: {subcmd}\n\n{preview}")
+    else:
+        available = ", ".join(PERSONAS.keys())
+        await update.message.reply_text(
+            f"Unknown persona: '{subcmd}'\n\nAvailable: {available}\n"
+            f"Or use: /persona set <your custom prompt>"
+        )
 
 
 # ── System commands ──────────────────────────────────────────────
@@ -1570,7 +1715,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif intent == "ask_llm":
         await typing(update)
         thinking = await update.message.reply_text("Processing...")
-        response = await llm.ask(text, system_prompt=RAVEN_SYSTEM)
+        response = await llm.ask(text, system_prompt=get_persona())
         try:
             await thinking.delete()
         except Exception:
@@ -1636,7 +1781,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await typing(update)
         thinking = await update.message.reply_text("Processing...")
-        response = await llm.ask(text, system_prompt=RAVEN_SYSTEM)
+        response = await llm.ask(text, system_prompt=get_persona())
         try:
             await thinking.delete()
         except Exception:
@@ -1779,6 +1924,7 @@ async def post_init(application: Application):
         BotCommand("go", "Go to bookmark"),
         BotCommand("gpu", "GPU status"),
         BotCommand("stop", "Shutdown RAVEN"),
+        BotCommand("persona", "Switch personality"),
         BotCommand("remind", "Set a reminder"),
     ]
     await application.bot.set_my_commands(commands)
@@ -1903,6 +2049,7 @@ def create_bot() -> Application:
     app.add_handler(CommandHandler("go", cmd_go))
     app.add_handler(CommandHandler("gpu", cmd_gpu))
     app.add_handler(CommandHandler("stop", cmd_stop))
+    app.add_handler(CommandHandler("persona", cmd_persona))
     app.add_handler(CommandHandler("remind", cmd_remind))
 
     # Inline button callback handler

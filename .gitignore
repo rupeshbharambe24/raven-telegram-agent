@@ -13,6 +13,7 @@ venv/
 logs/
 screenshot.png
 _portscan.ps1
+.persona
 
 # OS
 .DS_Store
