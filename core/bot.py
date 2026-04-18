@@ -1195,6 +1195,132 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _os._exit(0)
 
 
+# ── Livestream & Remote ────────────────────────────────────────────
+
+_livestream_task: asyncio.Task | None = None
+_livestream_last_msg_id: int | None = None
+
+
+@authorized
+async def cmd_livestream(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Stream desktop screenshots to Telegram.
+
+    /livestream start     — start streaming (default 5s interval)
+    /livestream start 3   — stream every 3 seconds
+    /livestream stop      — stop streaming
+    /livestream           — show status
+    """
+    global _livestream_task, _livestream_last_msg_id
+    args = context.args or []
+
+    if not args:
+        status = "ACTIVE" if _livestream_task and not _livestream_task.done() else "STOPPED"
+        await update.message.reply_text(
+            f"[ LIVESTREAM: {status} ]\n\n"
+            f"/livestream start <seconds> — begin (default 5s)\n"
+            f"/livestream stop — end stream"
+        )
+        return
+
+    subcmd = args[0].lower()
+
+    if subcmd == "stop":
+        if _livestream_task and not _livestream_task.done():
+            _livestream_task.cancel()
+            _livestream_task = None
+            await update.message.reply_text("Livestream stopped.")
+        else:
+            await update.message.reply_text("No livestream running.")
+        return
+
+    if subcmd == "start":
+        # Parse interval
+        interval = 5
+        if len(args) > 1:
+            try:
+                interval = max(3, int(args[1]))  # minimum 3 seconds
+            except ValueError:
+                pass
+
+        # Stop existing stream if any
+        if _livestream_task and not _livestream_task.done():
+            _livestream_task.cancel()
+            await asyncio.sleep(0.5)
+
+        await update.message.reply_text(
+            f"[ LIVESTREAM STARTED ]\n"
+            f"Interval: {interval}s\n"
+            f"Send /livestream stop to end."
+        )
+
+        async def _stream_loop():
+            global _livestream_last_msg_id
+            chat_id = Config.TELEGRAM_CHAT_ID
+            bot = context.bot
+            frame = 0
+
+            while True:
+                try:
+                    path, error = await screenshot.take_screenshot()
+                    if error:
+                        logger.warning(f"Livestream screenshot error: {error}")
+                        await asyncio.sleep(interval)
+                        continue
+
+                    frame += 1
+
+                    # Delete previous screenshot to keep chat clean
+                    if _livestream_last_msg_id:
+                        try:
+                            await bot.delete_message(chat_id, _livestream_last_msg_id)
+                        except Exception:
+                            pass
+
+                    # Send new screenshot
+                    with open(path, "rb") as f:
+                        msg = await bot.send_photo(
+                            chat_id, photo=f,
+                            caption=f"LIVE  |  frame {frame}  |  /livestream stop to end"
+                        )
+                    _livestream_last_msg_id = msg.message_id
+
+                except asyncio.CancelledError:
+                    # Clean exit
+                    if _livestream_last_msg_id:
+                        try:
+                            await bot.send_message(chat_id, "Livestream ended.")
+                        except Exception:
+                            pass
+                    _livestream_last_msg_id = None
+                    return
+                except Exception as e:
+                    logger.error(f"Livestream error: {e}")
+
+                await asyncio.sleep(interval)
+
+        _livestream_task = asyncio.create_task(_stream_loop())
+        return
+
+    await update.message.reply_text("Usage: /livestream start [seconds] or /livestream stop")
+
+
+@authorized
+async def cmd_remote(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send Chrome Remote Desktop access link."""
+    await update.message.reply_text(
+        "[ REMOTE DESKTOP ]\n"
+        "━━━━━━━━━━━━━━━━━━━\n\n"
+        "Open on your phone:\n"
+        "  remotedesktop.google.com/access\n\n"
+        "Or use the Chrome Remote Desktop app.\n\n"
+        "Setup (one-time on PC):\n"
+        "  1. Chrome > remotedesktop.google.com/access\n"
+        "  2. Set up remote access > install host\n"
+        "  3. Set name + PIN\n\n"
+        "Then access from any device with same Google account."
+    )
+
+
 # ── GPU & Reminders ───────────────────────────────────────────────
 
 @authorized
@@ -1924,6 +2050,8 @@ async def post_init(application: Application):
         BotCommand("go", "Go to bookmark"),
         BotCommand("gpu", "GPU status"),
         BotCommand("stop", "Shutdown RAVEN"),
+        BotCommand("livestream", "Stream desktop to Telegram"),
+        BotCommand("remote", "Remote desktop access link"),
         BotCommand("persona", "Switch personality"),
         BotCommand("remind", "Set a reminder"),
     ]
@@ -2049,6 +2177,8 @@ def create_bot() -> Application:
     app.add_handler(CommandHandler("go", cmd_go))
     app.add_handler(CommandHandler("gpu", cmd_gpu))
     app.add_handler(CommandHandler("stop", cmd_stop))
+    app.add_handler(CommandHandler("livestream", cmd_livestream))
+    app.add_handler(CommandHandler("remote", cmd_remote))
     app.add_handler(CommandHandler("persona", cmd_persona))
     app.add_handler(CommandHandler("remind", cmd_remind))
 
