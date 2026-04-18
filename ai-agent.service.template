@@ -1,0 +1,16 @@
+[Unit]
+Description=JARVIS AI Agent - Telegram-controlled local LLM agent
+After=network.target
+
+[Service]
+Type=simple
+User=__WSL_USER__
+WorkingDirectory=__PROJECT_DIR__
+ExecStart=__VENV_DIR__/bin/python3 __PROJECT_DIR__/main.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
