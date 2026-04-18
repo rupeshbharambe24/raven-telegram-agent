@@ -1,0 +1,5 @@
+python-telegram-bot>=20.7
+aiohttp>=3.9
+python-dotenv>=1.0
+jupyter_client>=8.0
+ipykernel>=6.0
