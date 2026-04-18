@@ -143,6 +143,26 @@ Groq     Gemini    Ollama
 | `/clip <text>` | Copy to Windows clipboard |
 | `/bookmark <name> <path>` | Save a path shortcut |
 | `/go <name>` | Navigate to bookmark |
+| `/persona` | Switch AI personality |
+| `/stop` | Shutdown agent cleanly |
+
+### Personality System
+
+RAVEN comes with switchable AI personalities:
+
+```
+/persona              — show current + all presets
+/persona raven        — sharp, direct, darkly witty (default)
+/persona formal       — professional, no personality
+/persona mentor       — patient, teaches as it goes
+/persona brutal       — extremely blunt, no sugar coating
+/persona pirate       — nautical terms, fun but helpful
+/persona zen          — calm, philosophical, minimalist
+/persona set <prompt> — fully custom personality
+/persona reset        — back to default
+```
+
+Persists across restarts. Create your own with `/persona set You are a sarcastic cat who judges every command`.
 
 ### Natural Language
 
