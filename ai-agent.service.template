@@ -11,6 +11,6 @@ Restart=on-failure
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
+# Clean stop via /stop command or systemctl stop won't trigger restart
+# Only unexpected crashes trigger restart (on-failure, not always)
+SuccessExitStatus=0

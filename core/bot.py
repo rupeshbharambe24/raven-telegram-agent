@@ -1102,6 +1102,24 @@ async def cmd_go(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await reply(update.message, f"{name} ({path}):\n\n{content}")
 
 
+# ── Agent Control ─────────────────────────────────────────────────
+
+@authorized
+async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cleanly shut down the agent. Systemd will NOT restart (exit code 0)."""
+    await update.message.reply_text(
+        "[ RAVEN OFFLINE ]\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "Going dark. Use Start RAVEN.bat to bring me back."
+    )
+    logger.info("Clean shutdown requested via /stop command.")
+    # Give Telegram time to deliver the message
+    await asyncio.sleep(2)
+    # Exit with code 0 — systemd on-failure policy won't restart on clean exit
+    import os as _os
+    _os._exit(0)
+
+
 # ── GPU & Reminders ───────────────────────────────────────────────
 
 @authorized
@@ -1760,6 +1778,7 @@ async def post_init(application: Application):
         BotCommand("bookmark", "Save a bookmark"),
         BotCommand("go", "Go to bookmark"),
         BotCommand("gpu", "GPU status"),
+        BotCommand("stop", "Shutdown RAVEN"),
         BotCommand("remind", "Set a reminder"),
     ]
     await application.bot.set_my_commands(commands)
@@ -1883,6 +1902,7 @@ def create_bot() -> Application:
     app.add_handler(CommandHandler("bookmark", cmd_bookmark))
     app.add_handler(CommandHandler("go", cmd_go))
     app.add_handler(CommandHandler("gpu", cmd_gpu))
+    app.add_handler(CommandHandler("stop", cmd_stop))
     app.add_handler(CommandHandler("remind", cmd_remind))
 
     # Inline button callback handler
