@@ -72,7 +72,7 @@ Groq     Gemini    Ollama
 
 **LLM Cascade**: Tries Groq first (fast, 70B model), falls back to Gemini Flash, then local Ollama. Automatic failover on rate limits or errors.
 
-## Commands (36 total)
+## Commands (40 total)
 
 ### LLM
 | Command | Description | Approval |
@@ -144,6 +144,9 @@ Groq     Gemini    Ollama
 | `/bookmark <name> <path>` | Save a path shortcut |
 | `/go <name>` | Navigate to bookmark |
 | `/persona` | Switch AI personality |
+| `/livestream start [N]` | Stream desktop screenshots every N seconds |
+| `/livestream stop` | Stop livestream |
+| `/remote` | Chrome Remote Desktop setup guide |
 | `/stop` | Shutdown agent cleanly |
 
 ### Personality System
@@ -163,6 +166,20 @@ RAVEN comes with switchable AI personalities:
 ```
 
 Persists across restarts. Create your own with `/persona set You are a sarcastic cat who judges every command`.
+
+### Live Desktop Monitoring
+
+Two ways to see your desktop remotely:
+
+**Livestream (built-in)** — screenshots streamed directly to your Telegram chat:
+```
+/livestream start      — every 5 seconds
+/livestream start 3    — every 3 seconds
+/livestream stop       — end stream
+```
+Send commands and watch results in the same chat. Previous screenshot auto-deletes to keep the chat clean.
+
+**Chrome Remote Desktop (recommended for full control)** — full interactive desktop access from your phone. Run `/remote` for setup instructions.
 
 ### Natural Language
 
