@@ -1,37 +1,57 @@
-# J.A.R.V.I.S. - Telegram AI Agent
+# RAVEN - Telegram AI Agent
 
-> Control your development machine from anywhere using Telegram + local LLMs with cloud fallback.
+> Control your development machine from anywhere. Send a raven.
 
-A personal AI agent that runs on WSL2, connects to your local Ollama models, and gives you full remote control of your dev environment through Telegram - complete with a permission system so it can't do anything destructive without your explicit approval.
+A personal AI agent that runs on WSL2, connects to cloud + local LLMs, and gives you full remote control of your dev environment through Telegram — complete with a permission system so it can't do anything destructive without your explicit approval.
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
 ![Telegram](https://img.shields.io/badge/Telegram-Bot%20API-blue)
+![LLMs](https://img.shields.io/badge/LLMs-Groq%20%7C%20Gemini%20%7C%20Ollama-purple)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 ## What It Does
 
-**Send a Telegram message. Your machine does the work.**
+**Send a message. Your machine does the work.**
 
-- Ask your LLM questions from your phone (Groq/Gemini/Ollama cascade)
+- Ask LLM questions from your phone (Groq/Gemini/Ollama cascade)
 - Run Python scripts and see output in real-time
 - Execute Jupyter notebooks cell-by-cell with live output
 - Start dev servers, auto-detect the port, open browser, take screenshots
-- Find files, read code, manage git - all from Telegram
+- Find files, read code, manage git — all from Telegram
 - Get GPU status, set reminders, monitor running processes
 - **Every write/delete operation requires your tap-to-approve**
 
 ### Demo Flow
+
 ```
-You: "go to D drive, open my react project, run npm dev and screenshot it"
+You:   "go to D drive, open my react project, run npm dev and screenshot it"
 
-JARVIS: [Plans the steps, asks for approval]
-You: [Tap Approve]
+RAVEN: [Plans the steps, asks for approval]
+You:   [Tap Approve]
 
-JARVIS: [Starts dev server via PowerShell]
-        [Auto-detects port 5173]
-        [Opens browser]
-        [Waits for page load]
-        [Sends screenshot to your phone]
+RAVEN: [Starts dev server via PowerShell]
+       [Auto-detects port 5173]
+       [Opens browser, waits for load]
+       [Sends screenshot to your phone]
+```
+
+### Startup Dashboard
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       R A V E N  v2.0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Time:    2026-04-18 18:30
+  Groq:    ON
+  Gemini:  ON
+  Ollama:  ON
+  Disk:    45GB free
+  GPU:     NVIDIA RTX 3060 (1024/12288 MB)
+
+  All systems online.
+  Send /help for commands.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
 ## Architecture
@@ -41,13 +61,13 @@ Your Phone (Telegram)
         |
    Telegram Bot API
         |
-  J.A.R.V.I.S. Agent (WSL2)
-   /        |          \
-Groq     Gemini     Ollama (local)
-(70B)    (Flash)    (7B fallback)
-   \        |          /
-    Windows Machine
-    (files, browser, GPU, dev servers)
+     RAVEN Agent (WSL2)
+    /       |        \
+Groq     Gemini    Ollama
+(70B)    (Flash)   (7B fallback)
+    \       |        /
+     Windows Machine
+     (files, GPU, browser, dev servers)
 ```
 
 **LLM Cascade**: Tries Groq first (fast, 70B model), falls back to Gemini Flash, then local Ollama. Automatic failover on rate limits or errors.
@@ -125,16 +145,19 @@ Groq     Gemini     Ollama (local)
 | `/go <name>` | Navigate to bookmark |
 
 ### Natural Language
-You don't always need commands. Just type:
-- "send me the training notebook from D drive"
-- "find the config file"
-- "run test.py"
-- "take a screenshot"
-- "what's running in the background?"
+
+You don't always need commands. Just type naturally:
+
+- *"send me the training notebook from D drive"*
+- *"find the config file"*
+- *"run test.py"*
+- *"take a screenshot"*
+- *"what's running in the background?"*
 
 ## Setup
 
 ### Prerequisites
+
 - Windows 10/11 with WSL2 (Ubuntu)
 - Python 3.10+ in WSL
 - [Ollama](https://ollama.com) installed on Windows
@@ -145,18 +168,18 @@ You don't always need commands. Just type:
 
 ```bash
 # Clone
-git clone https://github.com/rupeshbharambe24/jarvis-telegram-agent.git
-cd jarvis-telegram-agent
+git clone https://github.com/rupeshbharambe24/raven-telegram-agent.git
+cd raven-telegram-agent
 
 # Configure
 cp .env.example .env
 # Edit .env with your tokens and API keys
 
-# Make Ollama accessible from WSL (Windows PowerShell):
-# [System.Environment]::SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0", "User")
+# Make Ollama accessible from WSL (run in Windows PowerShell):
+[System.Environment]::SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0", "User")
 # Then restart Ollama
 
-# Setup (creates venv, installs deps, tests connections)
+# Setup (creates venv on Linux fs, installs deps, tests connections)
 bash setup.sh
 
 # Run
@@ -165,10 +188,15 @@ python3 main.py
 ```
 
 ### Get Free API Keys
-- **Groq** (Llama 3.3 70B): https://console.groq.com - 14K requests/day free
-- **Gemini Flash**: https://aistudio.google.com/apikey - 1500 requests/day free
 
-### Run as Service (auto-start)
+| Provider | Model | Free Tier | Link |
+|----------|-------|-----------|------|
+| **Groq** | Llama 3.3 70B | 14K req/day | [console.groq.com](https://console.groq.com) |
+| **Gemini** | Flash | 1500 req/day | [aistudio.google.com](https://aistudio.google.com/apikey) |
+| **Ollama** | qwen, deepseek, etc. | Unlimited (local) | [ollama.com](https://ollama.com) |
+
+### Run as Service
+
 ```bash
 sudo cp ai-agent.service /etc/systemd/system/
 sudo systemctl enable ai-agent
@@ -177,22 +205,23 @@ sudo systemctl start ai-agent
 
 ## Permission System
 
-The agent uses a **read-auto, write-approve** model:
+RAVEN uses a **read-auto, write-approve** model:
 
 - **Read operations** (read, ls, find, screenshot, status) execute immediately
-- **Write operations** (write, delete, run, commit) send an inline keyboard to Telegram:
-  ```
-  PERMISSION REQUIRED
-  Action: Run script: train.py
-  [Approve] [Deny]
-  ```
-- You tap Approve or Deny on your phone
-- 5-minute timeout auto-denies if no response
+- **Write operations** (write, delete, run, commit) send an inline keyboard:
+
+```
+PERMISSION REQUIRED
+Action: Run script: train.py
+[Approve] [Deny]
+```
+
+Tap to approve or deny. 5-minute timeout auto-denies.
 
 ## Project Structure
 
 ```
-jarvis-telegram-agent/
+raven-telegram-agent/
 ├── main.py                 # Entry point
 ├── config.py               # Configuration from .env
 ├── .env.example            # Template for secrets
@@ -209,33 +238,34 @@ jarvis-telegram-agent/
     ├── file_ops.py         # File operations + search
     ├── process_ops.py      # Process management + streaming
     ├── git_ops.py          # Git operations (local only)
-    ├── screenshot.py       # Windows screen capture via PowerShell
+    ├── screenshot.py       # Windows screen capture
     └── system_info.py      # System status
 ```
 
 ## Contributing
 
-Contributions are welcome! Some areas that could use help:
+Contributions welcome. Some ideas:
 
-- **Docker support** - containerize the agent for easier deployment
-- **Voice messages** - send/receive voice via Telegram + TTS/STT
-- **Multi-user** - support multiple authorized Telegram users
-- **Web dashboard** - optional web UI alongside Telegram
-- **More LLM providers** - Claude, local llama.cpp, etc.
-- **Tests** - the project currently has no test suite
-- **Linux native support** - remove WSL2 dependency
+- **Docker support** — containerize for easier deployment
+- **Voice messages** — TTS/STT via Telegram voice
+- **More LLM providers** — Claude, local llama.cpp
+- **Tests** — no test suite yet
+- **Linux native** — remove WSL2 dependency
+- **Web dashboard** — optional web UI alongside Telegram
+- **Multi-user** — support multiple authorized users
 
 ### How to Contribute
+
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/voice-messages`)
 3. Make your changes
-4. Test manually with your own bot
-5. Submit a PR with a clear description
+4. Test with your own bot
+5. Submit a PR
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
-Built by [@rupeshbharambe24](https://github.com/rupeshbharambe24) with help from Claude Code.
+Built by [@rupeshbharambe24](https://github.com/rupeshbharambe24)

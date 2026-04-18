@@ -31,15 +31,16 @@ notebook_mgr = NotebookManager()
 
 MAX_MSG = 4000  # Telegram limit is 4096, leave headroom
 
-# ── JARVIS personality ────────────────────────────────────────────
+# ── RAVEN personality ─────────────────────────────────────────────
 
-JARVIS_SYSTEM = (
-    "You are JARVIS, a highly capable AI assistant for Rupesh. "
-    "You are professional, concise, and slightly witty — like Tony Stark's JARVIS. "
-    "Address the user as 'sir' occasionally but not every message. "
-    "Keep responses brief and actionable. When reporting status, use structured formatting. "
+RAVEN_SYSTEM = (
+    "You are RAVEN, a sharp and efficient AI agent that controls a development machine remotely. "
+    "You are precise, direct, and darkly witty — like a raven delivering exactly what's needed. "
+    "Keep responses brief and actionable. No fluff. When reporting status, use structured formatting. "
     "You have full control of the user's development machine via WSL2 and can run commands, "
-    "manage files, execute notebooks, and monitor processes."
+    "manage files, execute notebooks, and monitor processes. "
+    "Occasionally use bird/raven metaphors when it fits naturally (e.g., 'scouting the directory', "
+    "'perched and ready') but don't force it."
 )
 
 # ── Reminders ─────────────────────────────────────────────────────
@@ -161,9 +162,9 @@ def _wsl_to_win(wsl_path: str) -> str:
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await typing(update)
     await update.message.reply_text(
-        "[ J.A.R.V.I.S. ONLINE ]\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Good to see you, sir.\n"
+        "[ RAVEN ONLINE ]\n"
+        "━━━━━━━━━━━━━━━━━\n\n"
+        "Perched and ready.\n"
         "All systems operational.\n\n"
         "Send /help for the command menu,\n"
         "or just tell me what you need.\n\n"
@@ -238,7 +239,7 @@ async def cmd_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await typing(update)
     thinking = await update.message.reply_text("Processing, sir...")
-    response = await llm.ask(prompt, system_prompt=JARVIS_SYSTEM)
+    response = await llm.ask(prompt, system_prompt=RAVEN_SYSTEM)
     try:
         await thinking.edit_text(response or "No response.")
     except Exception:
@@ -1498,7 +1499,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif intent == "ask_llm":
         await typing(update)
         thinking = await update.message.reply_text("Processing, sir...")
-        response = await llm.ask(text, system_prompt=JARVIS_SYSTEM)
+        response = await llm.ask(text, system_prompt=RAVEN_SYSTEM)
         try:
             await thinking.edit_text(response or "No response.")
         except Exception:
@@ -1562,7 +1563,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await typing(update)
         thinking = await update.message.reply_text("Processing, sir...")
-        response = await llm.ask(text, system_prompt=JARVIS_SYSTEM)
+        response = await llm.ask(text, system_prompt=RAVEN_SYSTEM)
         try:
             await thinking.edit_text(response or "No response.")
         except Exception:
@@ -1741,7 +1742,7 @@ async def post_init(application: Application):
 
         dashboard = (
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "   J.A.R.V.I.S.  v2.0\n"
+            "       R A V E N  v2.0\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             "\n"
             f"  Time:    {now}\n"
@@ -1762,7 +1763,7 @@ async def post_init(application: Application):
         try:
             await application.bot.send_message(
                 Config.TELEGRAM_CHAT_ID,
-                "J.A.R.V.I.S. online. Send /help for commands.",
+                "RAVEN online. Send /help for commands.",
             )
         except Exception:
             pass

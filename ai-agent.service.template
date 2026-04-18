@@ -1,5 +1,5 @@
 [Unit]
-Description=JARVIS AI Agent - Telegram-controlled local LLM agent
+Description=RAVEN AI Agent - Telegram-controlled local LLM agent
 After=network.target
 
 [Service]
