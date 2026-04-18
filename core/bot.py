@@ -73,13 +73,64 @@ async def typing(update):
         pass
 
 
-async def reply(message, text):
+def md_to_html(text: str) -> str:
+    """Convert LLM markdown output to Telegram-compatible HTML."""
+    import html as _html
+
+    # First, extract code blocks so we don't mess with their contents
+    code_blocks = []
+    def _save_code(m):
+        code_blocks.append(m.group(2))
+        return f"\x00CODEBLOCK{len(code_blocks) - 1}\x00"
+
+    # Save fenced code blocks: ```lang\ncode\n```
+    result = re.sub(r"```(\w*)\n?(.*?)```", _save_code, text, flags=re.DOTALL)
+
+    # Escape HTML entities in non-code text
+    result = _html.escape(result)
+
+    # Headings: ### text -> <b>text</b>
+    result = re.sub(r"^#{1,4}\s+(.+)$", r"<b>\1</b>", result, flags=re.MULTILINE)
+
+    # Bold: **text** -> <b>text</b>
+    result = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", result)
+
+    # Italic: *text* -> <i>text</i> (but not inside words)
+    result = re.sub(r"(?<!\w)\*([^*]+?)\*(?!\w)", r"<i>\1</i>", result)
+
+    # Inline code: `text` -> <code>text</code>
+    result = re.sub(r"`([^`]+?)`", r"<code>\1</code>", result)
+
+    # Restore code blocks as <pre>
+    for i, code in enumerate(code_blocks):
+        escaped_code = _html.escape(code.strip())
+        result = result.replace(f"\x00CODEBLOCK{i}\x00", f"<pre>{escaped_code}</pre>")
+
+    return result
+
+
+async def reply(message, text, use_html=False):
     """Send a text reply, splitting into chunks if too long."""
+    parse_mode = "HTML" if use_html else None
     if len(text) <= MAX_MSG:
-        await message.reply_text(text)
+        try:
+            await message.reply_text(text, parse_mode=parse_mode)
+        except Exception:
+            # Fallback to plain text if HTML parsing fails
+            await message.reply_text(text)
     else:
         for i in range(0, len(text), MAX_MSG):
-            await message.reply_text(text[i : i + MAX_MSG])
+            chunk = text[i : i + MAX_MSG]
+            try:
+                await message.reply_text(chunk, parse_mode=parse_mode)
+            except Exception:
+                await message.reply_text(chunk)
+
+
+async def reply_smart(message, text):
+    """Send LLM response with markdown converted to Telegram HTML."""
+    html_text = md_to_html(text)
+    await reply(message, html_text, use_html=True)
 
 
 async def _handle_send_file(update: Update, search_info: str):
@@ -238,12 +289,13 @@ async def cmd_ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /ask <your question>")
         return
     await typing(update)
-    thinking = await update.message.reply_text("Processing, sir...")
+    thinking = await update.message.reply_text("Processing...")
     response = await llm.ask(prompt, system_prompt=RAVEN_SYSTEM)
     try:
-        await thinking.edit_text(response or "No response.")
+        await thinking.delete()
     except Exception:
-        await reply(update.message, response or "No response.")
+        pass
+    await reply_smart(update.message, response or "No response.")
 
 
 @authorized
@@ -253,12 +305,13 @@ async def cmd_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /code <your question>")
         return
     await typing(update)
-    thinking = await update.message.reply_text("Analyzing code, sir...")
+    thinking = await update.message.reply_text("Analyzing code...")
     response = await llm.ask_code(prompt)
     try:
-        await thinking.edit_text(response or "No response.")
+        await thinking.delete()
     except Exception:
-        await reply(update.message, response or "No response.")
+        pass
+    await reply_smart(update.message, response or "No response.")
 
 
 # ── File commands ─────────────────────────────────────────────────
@@ -1498,12 +1551,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif intent == "ask_llm":
         await typing(update)
-        thinking = await update.message.reply_text("Processing, sir...")
+        thinking = await update.message.reply_text("Processing...")
         response = await llm.ask(text, system_prompt=RAVEN_SYSTEM)
         try:
-            await thinking.edit_text(response or "No response.")
+            await thinking.delete()
         except Exception:
-            await reply(update.message, response or "No response.")
+            pass
+        await reply_smart(update.message, response or "No response.")
 
     elif intent == "screenshot":
         await cmd_screenshot(update, context)
@@ -1554,20 +1608,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             response = await llm.ask_code(prompt)
             try:
-                await thinking.edit_text(f"Diagnosis:\n\n{response}")
+                await thinking.delete()
             except Exception:
-                await reply(update.message, f"Diagnosis:\n\n{response}")
+                pass
+            await reply_smart(update.message, f"**Diagnosis:**\n\n{response}")
         else:
             await update.message.reply_text("No recent errors to diagnose.")
 
     else:
         await typing(update)
-        thinking = await update.message.reply_text("Processing, sir...")
+        thinking = await update.message.reply_text("Processing...")
         response = await llm.ask(text, system_prompt=RAVEN_SYSTEM)
         try:
-            await thinking.edit_text(response or "No response.")
+            await thinking.delete()
         except Exception:
-            await reply(update.message, response or "No response.")
+            pass
+        await reply_smart(update.message, response or "No response.")
 
 
 # ── Document handler (receive files from user) ───────────────────
