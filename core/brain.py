@@ -30,6 +30,9 @@ _PATTERNS = [
     (r"\b(write|save|create|modify)\b.*\b(file|to)\b", "write_file"),
     (r"\b(delete|remove|rm)\b.*\b(file|\.py|\.txt|\.json)\b", "delete_file"),
     (r"\b(list|ls|dir)\b.*\b(folder|directory|files|dir|contents)\b", "list_dir"),
+    (r"\b(go\s+to|cd|navigate)\b.*\b(and|then)\b.*\b(ls|list|show|see)\b", "list_dir"),
+    (r"\b(ls|list)\b.*\b([a-zA-Z]\s*drive)\b", "list_dir"),
+    (r"\b([a-zA-Z]\s*drive)\b.*\b(ls|list|show)\b", "list_dir"),
     (r"\b(tree|structure|directory tree)\b", "tree"),
     (r"\b(recent|recently|modified|changed)\b.*\b(files?|today|yesterday)\b", "recent_files"),
     # System
@@ -96,13 +99,22 @@ def _extract_directory(text: str) -> str:
         )
         if folder_match:
             raw = folder_match.group(1).strip()
-            raw = re.sub(r"\b(send|me|get|give|fetch|share|file|ppt|pptx|pdf|doc|the|a|an)\b", "", raw)
-            parts = [p.strip() for p in raw.split() if p.strip()]
+            # Remove common words AND drive references to avoid "r/drive" duplication
+            raw = re.sub(
+                r"\b(send|me|get|give|fetch|share|file|ppt|pptx|pdf|doc|the|a|an|"
+                r"drive|[a-z]\s+drive)\b",
+                "", raw
+            )
+            parts = [p.strip() for p in raw.split() if p.strip() and len(p.strip()) > 1]
             if parts:
                 folder_parts = ["/".join(parts)]
 
     if drive_base and folder_parts:
-        return f"{drive_base}/{folder_parts[0]}"
+        # Don't append folder if it's just the drive letter repeated
+        folder = folder_parts[0].strip("/")
+        if folder and folder != drive_base.split("/")[-1]:
+            return f"{drive_base}/{folder}"
+        return drive_base
     elif drive_base:
         return drive_base
     elif folder_parts:
@@ -114,8 +126,8 @@ def _extract_filename_query(text: str) -> str:
     """Extract what the user is looking for (filename/description)."""
     lower = text.lower()
     cleaned = re.sub(
-        r"\b(send|me|give|get|fetch|share|download|from|the|a|an|in|at|on|"
-        r"[a-z]\s*drive|folder|directory|dir|file)\b",
+        r"\b(send|me|give|get|fetch|share|download|from|the|a|an|in|at|on|my|"
+        r"[a-z]\s*drive|drive|folder|directory|dir|file|pdf|ppt|doc)\b",
         " ", lower
     )
     cleaned = re.sub(r"[\w]+[/\\][\w/\\]+", " ", cleaned)
