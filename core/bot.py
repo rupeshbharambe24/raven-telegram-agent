@@ -1542,11 +1542,16 @@ CRITICAL CROSS-PLATFORM RULES:
   /mnt/d/myenv/Scripts/python.exe script.py
 
 PATH SEARCHING:
-- If the user gives a project name, ALWAYS search for it first before trying to cd into it.
-  Users say "prithvi ai" but the folder might be "PRITHVI-AI" or "prithvi_ai" or "PrithviAI".
-  Use: find /mnt/d/projects -maxdepth 2 -iname "*prithvi*" -type d 2>/dev/null | head -5
-  Then use the ACTUAL path found.
+- If the user gives a project name, ALWAYS search for it first.
+  Users say "prithvi ai" but folder might be "PRITHVI-AI" or "prithvi_ai".
+  Use: find /mnt/d/projects -maxdepth 2 -iname "*prithvi*" -type d 2>/dev/null | head -1
+  Then use the ACTUAL path found. Abort with exit 1 if not found.
 - NEVER guess folder names. Search first, use what you find.
+- When passing WSL paths to powershell.exe, convert /mnt/X/... to X:\\...:
+  drive=$(echo "$wsl_path" | cut -c6 | tr a-z A-Z)
+  rest=$(echo "$wsl_path" | cut -c8-)
+  win_path="$drive:\\$rest"
+  powershell.exe -Command "cd '$win_path'; npm run dev"
 
 RULES:
 - Output ONLY a bash script. No explanations, no markdown fences.
@@ -1558,6 +1563,15 @@ RULES:
   ALWAYS use OPENDEV — it auto-detects which port the dev server actually started on.
 - NEVER use powershell.exe Start-Process with a URL. OPENDEV handles opening the browser.
 - After OPENDEV, use SCREENSHOT to capture the page.
+- CRITICAL: OPENDEV and SCREENSHOT MUST be at the TOP LEVEL of the script.
+  NEVER put them inside if/else, for/done, or while/done blocks.
+  If the path search fails, use exit 1 to abort. Example:
+    project_path=$(find /mnt/d/projects -maxdepth 2 -iname "*name*" -type d 2>/dev/null | head -1)
+    [ -z "$project_path" ] && echo "Project not found" && exit 1
+    powershell.exe -Command "cd '$project_path'; npm run dev" &
+    sleep 15
+    OPENDEV
+    SCREENSHOT
 - Keep it minimal — only the commands needed.
 """
 
