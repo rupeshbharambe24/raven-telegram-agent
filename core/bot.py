@@ -1547,7 +1547,9 @@ RULES:
 - For dev servers that run forever, start via powershell and background it:
   powershell.exe -Command "cd 'D:\\path'; npm run dev" &
   sleep 15
-- NEVER guess or hardcode a port number. Use OPENDEV to auto-detect the port.
+- NEVER EVER hardcode a port number (no localhost:3000, no localhost:8080, nothing).
+  ALWAYS use OPENDEV — it auto-detects which port the dev server actually started on.
+- NEVER use powershell.exe Start-Process with a URL. OPENDEV handles opening the browser.
 - After OPENDEV, use SCREENSHOT to capture the page.
 - Keep it minimal — only the commands needed.
 """
@@ -1576,19 +1578,22 @@ def _extract_url_from_output(text: str) -> str | None:
 
 
 async def _find_dev_server_by_scan() -> str | None:
-    """Fallback: scan common ports via PowerShell to find an HTTP server."""
-    ports = [8080, 8081, 5173, 3000, 8000, 4200, 5000, 5500, 3001, 4000, 8888, 1234]
+    """Fallback: scan common dev server ports via PowerShell.
+    Checks for HTML content to distinguish web apps from databases."""
+    # Dev server ports first, common services (like Postgres 8080) last
+    ports = [3000, 3001, 5173, 5174, 4200, 8000, 8001, 5000, 5500, 4000, 1234, 8080, 8081, 8888]
 
-    # Write a PS1 script that checks ports with HTTP GET (not just TCP)
-    # This distinguishes web servers from databases
+    # Script checks each port for HTML response (filters out databases/APIs)
     ps_lines = [
         "foreach ($p in @(" + ",".join(str(p) for p in ports) + ")) {",
         "  try {",
         "    $r = Invoke-WebRequest -Uri \"http://127.0.0.1:$p\" -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop",
-        "    if ($r.StatusCode -lt 500) { Write-Output $p; exit }",
-        "  } catch {",
-        "    if ($_.Exception.Response -ne $null) { Write-Output $p; exit }",
-        "  }",
+        "    $ct = $r.Headers['Content-Type']",
+        "    # Only match if response contains HTML (dev servers serve HTML, databases don't)",
+        "    if ($r.StatusCode -lt 400 -and ($r.Content -match '<html|<!doctype|<div|<script|text/html' -or $ct -match 'text/html')) {",
+        "      Write-Output $p; exit",
+        "    }",
+        "  } catch {}",
         "}",
     ]
     script_path = Config.WORKSPACE / "_portscan.ps1"
