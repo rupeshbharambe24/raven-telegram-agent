@@ -208,7 +208,7 @@ async def reply_smart(message, text):
     await reply(message, html_text, use_html=True)
 
 
-async def _handle_send_file(update: Update, search_info: str):
+async def _handle_send_file(update: Update, search_info: str, context=None):
     """Search for and send a file based on natural language description."""
     parts = search_info.split("::", 1)
     directory = parts[0] if parts else ""
@@ -254,8 +254,10 @@ async def _handle_send_file(update: Update, search_info: str):
             else:
                 size_str = f"{sz // (1024 * 1024)}MB"
             lines.append(f"  {i}. {m.name}  ({size_str})\n     {m.parent}")
-        lines.append(f"\nSend the exact file with:\n/send <path>")
+        lines.append(f"\nReply with a number to send that file.")
         await reply(update.message, "\n".join(lines))
+        if context:
+            context.chat_data["pending_files"] = [str(m) for m in matches]
 
 
 def _resolve_repo_path(context) -> str:
@@ -519,8 +521,10 @@ async def cmd_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 size_str = f"{sz // (1024 * 1024)}MB"
             lines.append(f"  {i}. {m.name}  ({size_str})\n     {m.parent}")
-        lines.append(f"\nSend exact file:\n/send <full-path>")
+        lines.append(f"\nReply with a number to send that file.")
         await reply(update.message, "\n".join(lines))
+        # Store matches so user can reply with a number
+        context.chat_data["pending_files"] = [str(m) for m in matches]
 
 
 @authorized
@@ -1876,6 +1880,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     text = update.message.text
 
+    # Check if user is selecting from a numbered file list
+    pending = context.chat_data.get("pending_files")
+    if pending and text.strip().isdigit():
+        idx = int(text.strip()) - 1  # 1-based to 0-based
+        if 0 <= idx < len(pending):
+            filepath = pending[idx]
+            context.chat_data.pop("pending_files", None)
+            fpath, error = file_ops.get_file_for_send(filepath)
+            if error:
+                await update.message.reply_text(f"Can't send: {error}")
+            else:
+                with open(fpath, "rb") as f:
+                    await update.message.reply_document(
+                        document=f, filename=Path(fpath).name
+                    )
+            return
+        else:
+            await update.message.reply_text(f"Pick a number between 1 and {len(pending)}.")
+            return
+
+    # Clear pending selection on any non-number message
+    context.chat_data.pop("pending_files", None)
+
     # Check if we're in notebook edit mode
     nb_edit_cell = context.chat_data.get("nb_edit_cell")
     if nb_edit_cell is not None:
@@ -1928,7 +1955,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await monitor.run_and_report(context.bot, update.effective_chat.id, args)
 
     elif intent == "send_file":
-        await _handle_send_file(update, args)
+        await _handle_send_file(update, args, context)
 
     elif intent in ("write_file", "delete_file"):
         cmd = intent.split("_")[0]
