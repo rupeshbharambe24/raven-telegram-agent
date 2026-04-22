@@ -33,6 +33,8 @@ _PATTERNS = [
     (r"\b(go\s+to|cd|navigate)\b.*\b(and|then)\b.*\b(ls|list|show|see)\b", "list_dir"),
     (r"\b(ls|list)\b.*\b([a-zA-Z]\s*drive)\b", "list_dir"),
     (r"\b([a-zA-Z]\s*drive)\b.*\b(ls|list|show)\b", "list_dir"),
+    (r"^\s*(ls|list)\s", "list_dir"),  # bare "ls" or "ls /path"
+    (r"\b(go\s+to|open|show)\b.*\b([a-zA-Z]\s*drive)\b", "list_dir"),  # "go to R drive"
     (r"\b(tree|structure|directory tree)\b", "tree"),
     (r"\b(recent|recently|modified|changed)\b.*\b(files?|today|yesterday)\b", "recent_files"),
     # System

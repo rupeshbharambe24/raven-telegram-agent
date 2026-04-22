@@ -459,16 +459,68 @@ async def cmd_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @authorized
 async def cmd_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    filepath = " ".join(context.args) if context.args else ""
-    if not filepath:
-        await update.message.reply_text("Usage: /send <filepath>")
+    raw = " ".join(context.args) if context.args else ""
+    if not raw:
+        await update.message.reply_text("Usage: /send <filepath or search terms>")
         return
-    path, error = file_ops.get_file_for_send(filepath)
-    if error:
-        await update.message.reply_text(f"Error: {error}")
+
+    # If it looks like an actual path, try direct send
+    if "/" in raw or "\\" in raw or raw.startswith("/mnt"):
+        path, error = file_ops.get_file_for_send(raw)
+        if not error:
+            with open(path, "rb") as f:
+                await update.message.reply_document(document=f, filename=Path(path).name)
+            return
+
+    # Otherwise, search for the file
+    await typing(update)
+
+    # Extract drive hint (e.g., "from r drive" or "r drive")
+    drive_match = re.search(r"\b([a-zA-Z])\s*drive\b", raw.lower())
+    if drive_match:
+        search_dir = f"/mnt/{drive_match.group(1).lower()}"
+        # Remove drive reference from search query
+        query = re.sub(r"\b[a-zA-Z]\s*drive\b", "", raw.lower())
+        query = re.sub(r"\b(from|the|in|at|on|my)\b", "", query)
+        query = re.sub(r"\s+", " ", query).strip()
+    else:
+        search_dir = None
+        query = re.sub(r"\b(from|the|in|at|on|my)\b", "", raw.lower()).strip()
+
+    if not query or len(query) < 2:
+        await update.message.reply_text("Please be more specific about which file you want.")
         return
-    with open(path, "rb") as f:
-        await update.message.reply_document(document=f, filename=Path(path).name)
+
+    await update.message.reply_text(f"Searching for '{query}' ...")
+
+    # Search in specific drive or all allowed paths
+    if search_dir:
+        matches = file_ops.search_files(search_dir, query)
+    else:
+        matches = file_ops.find_files(query)
+
+    if not matches:
+        await update.message.reply_text(f"No files matching '{query}' found.")
+        return
+
+    if len(matches) == 1:
+        fpath, error = file_ops.get_file_for_send(str(matches[0]))
+        if error:
+            await update.message.reply_text(f"Found {matches[0].name} but can't send: {error}")
+            return
+        with open(fpath, "rb") as f:
+            await update.message.reply_document(document=f, filename=matches[0].name)
+    else:
+        lines = [f"Found {len(matches)} files:\n"]
+        for i, m in enumerate(matches, 1):
+            sz = m.stat().st_size
+            if sz < 1024 * 1024:
+                size_str = f"{sz // 1024}KB"
+            else:
+                size_str = f"{sz // (1024 * 1024)}MB"
+            lines.append(f"  {i}. {m.name}  ({size_str})\n     {m.parent}")
+        lines.append(f"\nSend exact file:\n/send <full-path>")
+        await reply(update.message, "\n".join(lines))
 
 
 @authorized
