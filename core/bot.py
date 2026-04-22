@@ -1541,6 +1541,13 @@ CRITICAL CROSS-PLATFORM RULES:
   Do NOT source them from bash. Use the exe directly:
   /mnt/d/myenv/Scripts/python.exe script.py
 
+PATH SEARCHING:
+- If the user gives a project name, ALWAYS search for it first before trying to cd into it.
+  Users say "prithvi ai" but the folder might be "PRITHVI-AI" or "prithvi_ai" or "PrithviAI".
+  Use: find /mnt/d/projects -maxdepth 2 -iname "*prithvi*" -type d 2>/dev/null | head -5
+  Then use the ACTUAL path found.
+- NEVER guess folder names. Search first, use what you find.
+
 RULES:
 - Output ONLY a bash script. No explanations, no markdown fences.
 - The script runs as a SINGLE bash script, so cd and env vars persist.
@@ -1577,11 +1584,47 @@ def _extract_url_from_output(text: str) -> str | None:
     return None
 
 
-async def _find_dev_server_by_scan() -> str | None:
-    """Fallback: scan common dev server ports via PowerShell.
-    Checks for HTML content to distinguish web apps from databases."""
-    # Dev server ports first, common services (like Postgres 8080) last
+async def _scan_open_ports() -> set[int]:
+    """Get currently open dev server ports (for before/after comparison)."""
     ports = [3000, 3001, 5173, 5174, 4200, 8000, 8001, 5000, 5500, 4000, 1234, 8080, 8081, 8888]
+    ps_lines = [
+        "foreach ($p in @(" + ",".join(str(p) for p in ports) + ")) {",
+        "  try {",
+        "    $tcp = New-Object System.Net.Sockets.TcpClient",
+        "    $tcp.Connect('127.0.0.1', $p)",
+        "    $tcp.Close()",
+        "    Write-Output $p",
+        "  } catch {}",
+        "}",
+    ]
+    script_path = Config.WORKSPACE / "_portscan_snap.ps1"
+    script_path.write_text("\n".join(ps_lines), encoding="utf-8")
+    wsl_path = str(script_path)
+    if wsl_path.startswith("/mnt/"):
+        parts = wsl_path[5:].split("/", 1)
+        win_path = f"{parts[0].upper()}:\\{parts[1]}".replace("/", "\\")
+    else:
+        win_path = wsl_path
+    try:
+        cmd = f'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{win_path}"'
+        rc, stdout, _ = await process_ops.run_command(cmd, timeout=15)
+        return {int(p.strip()) for p in stdout.strip().split("\n") if p.strip().isdigit()}
+    except Exception:
+        return set()
+    finally:
+        try:
+            script_path.unlink()
+        except Exception:
+            pass
+
+
+async def _find_dev_server_by_scan(exclude_ports: set[int] | None = None) -> str | None:
+    """Scan for dev server ports, optionally excluding pre-existing ones."""
+    ports = [3000, 3001, 5173, 5174, 4200, 8000, 8001, 5000, 5500, 4000, 1234, 8080, 8081, 8888]
+    if exclude_ports:
+        ports = [p for p in ports if p not in exclude_ports]
+    if not ports:
+        return None
 
     # Script checks each port for HTML response (filters out databases/APIs)
     ps_lines = [
@@ -1589,7 +1632,6 @@ async def _find_dev_server_by_scan() -> str | None:
         "  try {",
         "    $r = Invoke-WebRequest -Uri \"http://127.0.0.1:$p\" -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop",
         "    $ct = $r.Headers['Content-Type']",
-        "    # Only match if response contains HTML (dev servers serve HTML, databases don't)",
         "    if ($r.StatusCode -lt 400 -and ($r.Content -match '<html|<!doctype|<div|<script|text/html' -or $ct -match 'text/html')) {",
         "      Write-Output $p; exit",
         "    }",
@@ -1688,6 +1730,7 @@ async def _execute_task(bot, chat_id, task_text: str, context):
     had_error = False
     detected_url = None
     bg_captured_output = ""  # output from background processes for URL extraction
+    ports_before: set[int] = set()  # snapshot of open ports before starting server
 
     for seg_type, seg_data in segments:
         if seg_type == "screenshot":
@@ -1725,13 +1768,13 @@ async def _execute_task(bot, chat_id, task_text: str, context):
             if found_url:
                 output_log += f"\nURL from server output: {found_url}"
 
-            # 2. Fallback: scan ports with HTTP check
+            # 2. Fallback: scan ports, excluding pre-existing ones
             if not found_url:
                 try:
-                    await status_msg.edit_text("Scanning ports for HTTP server...")
+                    await status_msg.edit_text("Scanning for NEW dev server ports...")
                 except Exception:
                     pass
-                found_url = await _find_dev_server_by_scan()
+                found_url = await _find_dev_server_by_scan(exclude_ports=ports_before)
 
             if found_url:
                 detected_url = found_url
@@ -1754,6 +1797,8 @@ async def _execute_task(bot, chat_id, task_text: str, context):
             has_bg = any(l.strip().endswith("&") for l in seg_data.split("\n"))
 
             if has_bg:
+                # Snapshot open ports BEFORE starting dev server
+                ports_before = await _scan_open_ports()
                 # Run as background process
                 proc, captured = await process_ops.run_background_command(
                     f"bash -c {_shell_quote(seg_data)}",
@@ -1763,6 +1808,12 @@ async def _execute_task(bot, chat_id, task_text: str, context):
                 bg_procs.append(proc)
                 bg_captured_output += captured
                 output_log += f"\n{captured}"
+                # Check if background process had errors
+                _err_signs = ("No such file", "Cannot find path", "ENOENT", "Missing script", "error", "ERR!")
+                if any(e in captured for e in _err_signs) and "http" not in captured.lower():
+                    output_log += "\nWARNING: Dev server may have failed to start."
+                    had_error = True
+                    break
             else:
                 # Run as a single bash script
                 returncode, stdout, stderr = await process_ops.run_command(
